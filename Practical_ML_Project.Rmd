@@ -1,0 +1,164 @@
+---
+title: "Previsão da Qualidade do Levantamento de Peso"
+author: "Luciana Caldas Zetun"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+\`\`\`{r setup, include=FALSE} knitr::opts_chunk\$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# Carrega as bibliotecas necessárias.
+# Se algum desses pacotes não estiver instalado, use install.packages("nome_do_pacote").
+
+library(caret) # Para treinamento e avaliacao do modelo
+library(randomForest) # Para o algoritmo Random Forest 
+library(dplyr) # Para manipulação de dados 
+library(ggplot2) # Para visualização de dados (não estritamente necessário para o modelo, mas útil)
+
+# Carrega os datasets de treinamento e teste.
+
+# Certifique-se de que 'pml-training.csv' e 'pml-testing.csv' estão no seu diretório de trabalho.
+
+# O argumento na.strings é usado para tratar "NA" e "#DIV/0!" como valores ausentes.
+
+training_data <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!"))
+testing_data <- read.csv("pml-testing.csv", na.strings = c("NA", "#DIV/0!"))
+
+# Visualiza as dimensões e as primeiras linhas dos dados para verificar o carregamento.
+
+cat("Dimens\u00f5es dos dados de treinamento ap\u00f3s remover colunas com muitos NAs:", dim(training_data), "\n")
+cat("Dimens\u00f5es dos dados de teste ap\u00f3s remover colunas com muitos NAs:", dim(testing_data), "\n")
+
+# Define as colunas a serem removidas: identificadores de linha, nome de usuário e timestamps.
+
+cols_to_remove_id <- c("X", "user_name", "raw_timestamp_yyyymmddhhmmss", "cvtd_timestamp")
+
+# Remove as colunas de ambos os datasets usando a função select do dplyr.
+
+training_data \<- training_data %\>% select(-one_of(cols_to_remove_id)) testing_data \<- testing_data %\>% select(-one_of(cols_to_remove_id))
+
+cat("Dimens\u00f5es dos dados de treinamento ap\u00f3s remover IDs:", dim(training_data), "\n") cat("Dimens\u00f5es dos dados de teste ap\u00f3s remover IDs:", dim(testing_data), "\n")
+
+# Calcula a proporção de NAs em cada coluna do conjunto de treinamento.
+
+na_proportions \<- colSums(is.na(training_data)) / nrow(training_data)
+
+# Identifica as colunas com mais de 60% de NAs.
+
+cols_to_remove_na \<- names(na_proportions[na_proportions \> 0.6])
+
+# Remove as colunas identificadas de ambos os datasets.
+
+training_data \<- training_data %\>% select(-one_of(cols_to_remove_na)) testing_data \<- testing_data %\>% select(-one_of(cols_to_remove_na))
+
+cat("Dimensões dos dados de treinamento após remover colunas com muitos NAs:", dim(training_data), "\n") cat("Dimensões dos dados de teste após remover colunas com muitos NAs:", dim(testing_data), "\n")
+
+# Identifica colunas com variância próxima de zero no conjunto de treinamento.
+
+# A variável 'classe' é excluída desta análise, pois é a variável alvo.
+
+nzv_info \<- nearZeroVar(training_data %\>% select(-classe), saveMetrics = TRUE) nzv_cols \<- rownames(nzv_info[nzv_info\$nz
+
+```         
+                          # Obtém os nomes das colunas que são comuns a ambos os datasets (excluindo 'classe' do training_data para a comparação).
+```
+
+common_cols \<- intersect(names(training_data %\>% select(-classe)), names(testing_data))
+
+# Filtra os datasets para incluir apenas as colunas comuns e a variável 'classe' no training_data.
+
+training_data_final \<- training_data %\>% select(one_of(common_cols), classe) testing_data_final \<- testing_data %\>% select(one_of(common_cols))
+
+# Garante que 'classe' é um fator, o que é essencial para modelos de classificação no R.
+
+training_data_final$classe <- as.factor(training_data_final$classe)
+
+cat("Dimensões finais dos dados de treinamento:", dim(training_data_final), "\n") cat("Dimensões finais dos dados de teste:", dim(testing_data_final), "\n")
+
+# Define o seed para reprodutibilidade. É importante usar a mesma semente para obter os mesmos resultados.
+
+set.seed(42)
+
+# Divide os dados de treinamento em 75% para treinamento e 25% para validação.
+
+# createDataPartition garante que as proporções das classes sejam mantidas em ambos os subconjuntos.
+
+inTrain \<- createDataPartition(y = training_data_final\$classe, p = 0.75, list = FALSE) training \<- training_data_final[inTrain, ] validation \<- training_data_final[-inTrain, ]
+
+cat("Dimensões do conjunto de treinamento:", dim(training), "\n") cat("Dimensões do conjunto de validação:", dim(validation), "\n")
+
+# Configura o controle de treinamento para validação cruzada (5-fold CV).
+
+# 'method = "cv"' especifica validação cruzada.
+
+# 'number = 5' especifica 5 folds.
+
+# 'verboseIter = FALSE' para não imprimir o progresso de cada iteração no console (opcional, pode ser TRUE para depuração).
+
+fitControl \<- trainControl( method = "cv", number = 5, verboseIter = FALSE )
+
+cruzada definida anteriormente. \# Define o seed novamente para a reprodutibilidade do treinamento do modelo. \# Isso garante que o processo de Random Forest seja o mesmo a cada execução. set.seed(42)
+
+# Treina o modelo Random Forest.
+
+# A fórmula 'classe \~ .' indica que 'classe' é a variável alvo e '.' significa usar todas as outras variáveis.
+
+# 'method = "rf"' especifica o algoritmo Random Forest.
+
+# 'data = training' usa o conjunto de dados de treinamento.
+
+# 'trControl' aplica as configurações de validação cruzada.
+
+# Nota: Este passo pode levar algum tempo para ser executado, dependendo do tamanho dos dados e dos recursos do seu computador.
+
+modFit \<- train(classe \~ ., method = "rf", data = training, trControl = fitControl)
+
+# Exibe um resumo do modelo treinado, incluindo a precisão média e o erro na validação cruzada.
+
+print(modFit)
+
+# Faz previsões no conjunto de validação.
+
+predictions_validation \<- predict(modFit, newdata = validation)
+
+# Cria a matriz de confusão para avaliar o desempenho do modelo no conjunto de validação.
+
+# A matriz de confusão mostra o número de previsões corretas e incorretas para cada classe.
+
+confusion_matrix \<- confusionMatrix(predictions_validation, validation\$classe) print(confusion_matrix)
+
+# Calcula o erro fora da amostra (out-of-sample error).
+
+# O erro é simplesmente 1 menos a precisão geral (Accuracy) do modelo.
+
+out_of_sample_error \<- 1 - confusion_matrix\$overall['Accuracy']
+
+cat("\nPrecisão (Accuracy) no conjunto de validação:", round(confusion_matrix\$overall['Accuracy'], 4), "\n") cat("Erro fora da amostra (Out-of-Sample Error) estimado:", round(out_of_sample_error, 4), "\n")
+
+# Realiza as previsões nos 20 casos de teste usando o modelo treinado.
+
+# O pacote 'caret' e a função 'predict' automaticamente lidam com a correspondência de colunas,
+
+# mas garantir que 'testing_data_final' contenha apenas as features preditoras é crucial.
+
+predictions_quiz \<- predict(modFit, newdata = testing_data_final)
+
+# Exibe as previsões geradas.
+
+cat("Previsões para os 20 casos de teste:\n") print(predictions_quiz)
+
+# É altamente recomendável salvar essas previsões em um arquivo,
+
+# conforme as instruções do quiz do curso.
+
+# Por exemplo, para salvar em um arquivo de texto 'pml_predictions.txt' sem cabeçalho e sem aspas:
+
+# Descomente a linha abaixo e ajuste o nome do arquivo se necessário.
+
+# write.table(predictions_quiz, file = "pml_predictions.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
